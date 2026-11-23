@@ -66,6 +66,6 @@ t('barra: Menú · Inicio · Carrito; el carrito sale por la derecha y el menú 
   for (const k of ['#cartp{left:auto', '#cartp.ed-pin){left:auto', '#cartp{border-right:0']) assert.ok(!html.includes(k), 'el cajón del carrito no debe ir a la derecha: ' + k);
 });
 t('conectado: carrito, pedido, envío bloqueado sin dirección, tracking, panel', () => {
-  for (const k of ['}).join(\'\') + addrHTML()', "case 'ad-open': addrDialog()", 'if (!addrGate()) { e.preventDefault(); break; }', "case 'send': if (!addrGate()) break;", 'addrCheck(ADDR, addrStrict()).ok) trk(', "'ship-addr'", 'addrLines(ADDR, addrStrict())']) assert.ok(html.includes(k), k);
+  for (const k of ['}).join(\'\') + shipDestHTML() + addrHTML()', "case 'ad-open': addrDialog()", 'if (!addrGate()) { e.preventDefault(); break; }', "case 'send': if (!addrGate()) break;", 'addrCheck(ADDR, addrStrict()).ok) trk(', "'ship-addr'", 'addrLines(ADDR, addrStrict())']) assert.ok(html.includes(k), k);
 });
 console.log(`\n${pass} pruebas OK`);
