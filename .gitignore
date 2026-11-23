@@ -1,0 +1,14 @@
+node_modules/
+.wrangler/
+dist/
+.dev.vars
+.env
+.env.*
+*.log
+*.pem
+*.key
+.claude/
+.playwright-mcp/
+RESPALDOS/
+publicar/
+*.backup-*.html

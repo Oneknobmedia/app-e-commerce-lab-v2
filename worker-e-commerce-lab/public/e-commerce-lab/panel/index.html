@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Panel · E-commerce-lab</title><link rel="icon" type="image/svg+xml" href="../knob.svg"><meta name="theme-color" content="#000000"><link rel="stylesheet" href="../cuenta.css"></head>
+<body><div id="app" hidden>
+<header class="top"><img src="../knob.svg" alt=""><h1 class="grad">E-COMMERCE-LAB</h1><button class="who" id="who" aria-haspopup="true"></button></header>
+<div class="menu" id="menu" hidden><button data-m="perfil">Foto de perfil</button><button data-m="perfil">Mi perfil</button><button data-m="salir">Cerrar sesión</button></div>
+<main id="main"></main></div>
+<script src="../cuenta.js"></script>
+<script>
+(function () {
+  var C = Cuenta, E = C.esc, me = null, users = [];
+  var app = document.getElementById('app'), main = document.getElementById('main'), menu = document.getElementById('menu'), who = document.getElementById('who');
+  C.wire(document.body);
+
+  function head() { who.innerHTML = C.avatar(me) + '<b>' + E(me.nick || me.username) + '</b>'; }
+  who.onclick = function (e) { e.stopPropagation(); menu.hidden = !menu.hidden; };
+  document.addEventListener('click', function () { menu.hidden = true; });
+  menu.onclick = function (e) {
+    var m = e.target.closest('[data-m]'); if (!m) return;
+    if (m.dataset.m === 'perfil') perfil();
+    else C.api('auth/logout', {}).then(function () { location.replace('/e-commerce-lab/login/'); });
+  };
+
+  function view() {
+    var h = '';
+    if (!me.hasRecovery) h += '<div class="banner"><p><b>Genera tu código de recuperación.</b> Sin él, si olvidas tu clave solo el administrador puede ayudarte.</p><button class="btn sm" id="genrec">Generar código</button></div>';
+    h += '<h2>Proyectos</h2><div class="cards"><div class="card"><h3>Editor de catálogos</h3><p>Crea y edita tus catálogos.</p><a class="btn" href="/e-commerce-lab/" style="text-decoration:none">Abrir editor</a></div></div>';
+    if (me.role === 'admin') h += '<h2>Usuarios <span class="sp"></span><button class="btn sm" id="add">+ Agregar usuario</button></h2><div class="ulist" id="ul"></div>';
+    main.innerHTML = h;
+    if (me.role === 'admin') loadUsers();
+    var g = document.getElementById('genrec'); if (g) g.onclick = recovery;
+    var a = document.getElementById('add'); if (a) a.onclick = addUser;
+  }
+
+  function loadUsers() {
+    C.api('admin/users', {}).then(function (d) {
+      if (!d.ok_) return C.toast(C.msg(d));
+      users = d.users; drawUsers();
+    });
+  }
+  function drawUsers() {
+    var el = document.getElementById('ul'); if (!el) return;
+    el.innerHTML = users.map(function (u) {
+      var self = u.id === undefined || u.username === me.username;
+      return '<div class="urow" data-id="' + u.id + '">' + C.avatar(u)
+        + '<div class="nm"><b>' + E(u.nick || u.username) + '</b><span>@' + E(u.username) + (u.role === 'admin' ? ' · admin' : '') + '</span></div>'
+        + '<span class="chip" title="Proyectos guardados en su cuenta">' + (u.projects || 0) + ' proyecto' + (u.projects === 1 ? '' : 's') + '</span>'
+        + (u.help ? '<span class="chip hp">Pidió ayuda</span>' : '')
+        + (u.must_change ? '<span class="chip">Sin entrar aún</span>' : '')
+        + '<span class="chip ' + (u.status === 'active' ? 'on' : 'fz') + '">' + (u.status === 'active' ? 'Activo' : 'Congelado') + '</span>'
+        + (self || u.role === 'admin' ? '' : '<button class="btn sm enter" data-a="enter"' + (u.status === 'active' ? '' : ' disabled title="Reactívalo para entrar"') + '><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>Entrar a su panel</button>')
+        + (self ? '' : '<div class="acts"><button class="btn ghost sm" data-a="reset">Restablecer clave</button><button class="btn ghost sm" data-a="' + (u.status === 'active' ? 'freeze' : 'unfreeze') + '">' + (u.status === 'active' ? 'Congelar' : 'Reactivar') + '</button><button class="btn bad sm" data-a="delete">Eliminar</button></div>')
+        + '</div>';
+    }).join('');
+  }
+  main.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-a]'); if (!b) return;
+    var id = +b.closest('.urow').dataset.id, u = users.filter(function (x) { return x.id === id; })[0], act = b.dataset.a;
+    /* el admin entra al editor del usuario sin su clave; vuelve con «Volver a mi panel» */
+    if (act === 'enter') {
+      b.disabled = true;
+      return C.api('admin/impersonate', {id: id}).then(function (d) {
+        if (!d.ok_) { b.disabled = false; return C.toast(C.msg(d)); }
+        location.href = '/e-commerce-lab/';
+      });
+    }
+    if (act === 'reset') return confirmBox('Restablecer clave de @' + u.username, 'Se genera una clave nueva y su sesión se cierra. La clave actual deja de servir.', 'Restablecer', function () { return C.api('admin/reset', {id: id}).then(function (d) { if (!d.ok_) return C.toast(C.msg(d)); keyShow('Clave nueva de @' + d.username, d.key); loadUsers(); }); });
+    if (act === 'delete') return confirmBox('Eliminar a @' + u.username, 'Se borra el usuario para siempre. Esto no se puede deshacer.', 'Eliminar', function () { return C.api('admin/delete', {id: id}).then(function (d) { C.toast(d.ok_ ? 'Usuario eliminado' : C.msg(d)); loadUsers(); }); }, true);
+    C.api('admin/' + act, {id: id}).then(function (d) { C.toast(d.ok_ ? (act === 'freeze' ? 'Usuario congelado' : 'Usuario reactivado') : C.msg(d)); loadUsers(); });
+  });
+
+  function confirmBox(t, p, label, fn, danger) {
+    var m = C.modal('<h3>' + E(t) + '</h3><p class="hint">' + E(p) + '</p><button class="btn ' + (danger ? 'bad' : '') + '" id="y">' + label + '</button><button class="btn ghost" data-close>Cancelar</button>');
+    m.$('#y').onclick = function () { this.disabled = true; Promise.resolve(fn()).then(m.close); };
+  }
+  function keyShow(t, key) {
+    var m = C.modal('<h3 class="grad">' + E(t) + '</h3><p class="hint">Cópiala y pásasela. Se muestra una sola vez; en su primer ingreso el usuario crea su propia clave.</p>' + C.keybox(key) + '<button class="btn" data-close>Listo</button>');
+    m.el.dataset.lock = '1';
+  }
+  function addUser() {
+    var m = C.modal('<h3>Agregar usuario</h3><p class="hint">Solo el nombre de usuario. Se crea al instante con una clave de primer acceso.</p><label for="nu">Nombre de usuario</label><input class="in" id="nu" placeholder="gustavo" autocapitalize="off" spellcheck="false"><div class="err"></div><button class="btn" id="mk">Crear usuario</button>');
+    var i = m.$('#nu'), b = m.$('#mk'); i.focus();
+    var go = function () {
+      b.disabled = true;
+      C.api('admin/create', {username: i.value}).then(function (d) {
+        if (!d.ok_) { b.disabled = false; return m.$('.err').textContent = C.msg(d); }
+        m.close(); keyShow('Usuario @' + d.username + ' creado', d.key); loadUsers();
+      });
+    };
+    b.onclick = go; i.onkeydown = function (e) { if (e.key === 'Enter') go(); };
+  }
+
+  function recovery() {
+    var m = C.modal('<h3>Código de recuperación</h3><p class="hint">Escribe tu clave actual para generar uno nuevo. El anterior deja de servir.</p><label for="cu">Clave actual</label>' + C.pw('cu', {auto: 'current-password'}) + '<div class="err"></div><button class="btn" id="go">Generar código</button>');
+    m.$('#go').onclick = function () {
+      C.api('auth/recovery', {current: m.$('#cu').value}).then(function (d) {
+        if (!d.ok_) return m.$('.err').textContent = C.msg(d);
+        m.close(); me.hasRecovery = true; C.showRecovery(d.recovery, view);
+      });
+    };
+  }
+
+  function perfil() {
+    var photo = me.photo;
+    var m = C.modal('<h3 class="grad">Mi perfil</h3>'
+      + '<label class="drop" id="drop" for="file"><span id="pv">' + C.avatar({photo: photo, nick: me.nick, username: me.username}, 'lg') + '</span><span class="dt"><b>Foto de perfil</b><span>Arrastra una imagen aquí o toca para elegirla</span><span class="hint">@' + E(me.username) + '</span></span></label><input type="file" id="file" accept="image/*" hidden><button class="btn ghost sm" id="nopic" style="width:auto;margin:8px 0 0">Quitar foto</button>'
+      + '<label for="nk">Apodo</label><input class="in" id="nk" maxlength="40" value="' + E(me.nick) + '"><div class="err" id="e1"></div><button class="btn" id="sv">Guardar perfil</button>'
+      + '<hr><label>Cambiar clave</label><label for="c0" style="margin-top:8px">Clave actual</label>' + C.pw('c0', {auto: 'current-password'})
+      + '<label for="c1">Clave nueva (mínimo 8 caracteres)</label>' + C.pw('c1', {visible: true, auto: 'new-password'})
+      + '<label for="c2">Repite la clave (no se puede pegar)</label>' + C.pw('c2', {visible: true, nopaste: true})
+      + '<div class="err" id="e2"></div><button class="btn ghost" id="cp">Cambiar clave</button>'
+      + '<hr><button class="btn ghost" id="rc">Generar código de recuperación nuevo</button><button class="btn bad" id="out">Cerrar sesión</button>');
+    var draw = function () { m.$('#pv').innerHTML = C.avatar({photo: photo, nick: m.$('#nk').value || me.username, username: me.username}, 'lg'); };
+    var saveNow = function () {
+      C.api('auth/profile', {nick: me.nick || '', photo: photo}).then(function (d) {
+        if (!d.ok_) return m.$('#e1').textContent = C.msg(d);
+        me = d.user; head(); C.toast(photo ? 'Foto guardada' : 'Foto quitada');
+      });
+    };
+    m.$('#nopic').onclick = function () { photo = ''; draw(); saveNow(); };
+    var load = function (f) {
+      m.$('#e1').textContent = '';
+      if (!f || !/^image\//.test(f.type)) return m.$('#e1').textContent = 'Elige un archivo de imagen.';
+      var img = new Image(), url = URL.createObjectURL(f);
+      img.onload = function () {
+        var s = 256, c = document.createElement('canvas'), k = Math.min(img.width, img.height), x = c.getContext('2d');
+        c.width = c.height = s; x.drawImage(img, (img.width - k) / 2, (img.height - k) / 2, k, k, 0, 0, s, s);
+        photo = c.toDataURL('image/jpeg', 0.82); URL.revokeObjectURL(url); draw(); saveNow();
+      };
+      img.onerror = function () { m.$('#e1').textContent = 'No se pudo leer esa imagen.'; };
+      img.src = url;
+    };
+    m.$('#file').onchange = function () { load(this.files[0]); this.value = ''; };
+    var dz = m.$('#drop');
+    ['dragenter', 'dragover'].forEach(function (n) { dz.addEventListener(n, function (e) { e.preventDefault(); dz.classList.add('over'); }); });
+    ['dragleave', 'drop'].forEach(function (n) { dz.addEventListener(n, function (e) { e.preventDefault(); dz.classList.remove('over'); }); });
+    dz.addEventListener('drop', function (e) { load(e.dataTransfer.files[0]); });
+    m.$('#sv').onclick = function () {
+      C.api('auth/profile', {nick: m.$('#nk').value, photo: photo}).then(function (d) {
+        if (!d.ok_) return m.$('#e1').textContent = C.msg(d);
+        me = d.user; head(); m.close(); C.toast('Perfil guardado');
+      });
+    };
+    m.$('#cp').onclick = function () {
+      var e = m.$('#e2'); e.textContent = '';
+      if (m.$('#c1').value.length < 8) return e.textContent = 'La clave nueva debe tener al menos 8 caracteres.';
+      if (m.$('#c1').value !== m.$('#c2').value) return e.textContent = 'Las dos claves nuevas no coinciden.';
+      C.api('auth/password', {current: m.$('#c0').value, password: m.$('#c1').value}).then(function (d) {
+        if (!d.ok_) return e.textContent = C.msg(d);
+        m.close(); C.toast('Clave cambiada');
+      });
+    };
+    m.$('#rc').onclick = function () { m.close(); recovery(); };
+    m.$('#out').onclick = function () { C.api('auth/logout', {}).then(function () { location.replace('/e-commerce-lab/login/'); }); };
+  }
+
+  C.api('auth/me').then(function (d) {
+    if (!d.ok_ || !d.user || d.user.mustChange) return C.goLogin();
+    /* si el admin llegó aquí estando dentro de otra cuenta, vuelve a la suya */
+    if (d.user.impersonated) return C.api('auth/return', {}).then(function () { location.reload(); });
+    me = d.user; head(); view(); app.hidden = false;
+    C.syncLocal(me).then(function (n) { if (n) C.toast(n + (n > 1 ? ' proyectos de este navegador se guardaron' : ' proyecto de este navegador se guardó') + ' en tu cuenta'); if (n && me.role === 'admin') loadUsers(); });
+  });
+})();
+</script></body></html>

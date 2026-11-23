@@ -1,0 +1,19 @@
+// Worker e-commerce-lab (oneknobmedia.com/e-commerce-lab). Reconstruido desde la versión publicada v2.2.0 (c1acfbd7):
+// código fuente en src-original/src (v2.3.0 compilado en dist/worker.js), mismos enlaces y mismos archivos; solo cambia public/e-commerce-lab/index.html.
+{
+  "name": "e-commerce-lab",
+  "main": "src-original/src/index.js",
+  "compatibility_date": "2026-10-19",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/e-commerce-lab/api/*", "/e-commerce-lab/media/*"]
+  },
+  "ai": { "binding": "AI" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "e-commerce-lab-cuentas", "database_id": "15db9f9d-ed38-4437-a335-61781cd98100" }
+  ],
+  "ratelimits": [
+    { "name": "AI_LIMIT", "namespace_id": "1101", "simple": { "limit": 120, "period": 60 } }
+  ]
+}

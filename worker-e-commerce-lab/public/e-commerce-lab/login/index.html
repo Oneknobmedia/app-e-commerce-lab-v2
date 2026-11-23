@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Entrar · E-commerce-lab</title><link rel="icon" type="image/svg+xml" href="../knob.svg"><meta name="theme-color" content="#000000"><link rel="stylesheet" href="../cuenta.css"></head>
+<body><div class="center"><div class="box" id="box"></div></div>
+<script src="../cuenta.js"></script>
+<script>
+(function () {
+  var C = Cuenta, box = document.getElementById('box'), next = new URLSearchParams(location.search).get('next');
+  next = next && next.indexOf('/e-commerce-lab') === 0 && next.indexOf('//') < 0 ? next : '/e-commerce-lab/panel/';
+  C.wire(box);
+  var head = function (t, s) { return '<img class="logo" src="../knob.svg" alt=""><h1 class="grad">' + t + '</h1>' + (s ? '<p class="sub">' + s + '</p>' : ''); };
+  var go = function () { location.replace(next); };
+  var $ = function (s) { return box.querySelector(s); };
+  var val = function (id) { return $('#' + id).value; };
+  var busy = function (b, on) { b.disabled = on; };
+  var err = function (t) { $('.err').textContent = t || ''; };
+
+  function login() {
+    box.innerHTML = head('E-COMMERCE-LAB', 'Entra con tu usuario')
+      + '<label for="u">Usuario</label><input class="in" id="u" autocomplete="username" autocapitalize="off" spellcheck="false">'
+      + '<label for="p">Clave</label>' + C.pw('p', {auto: 'current-password'})
+      + '<div class="row"><label class="chk"><input type="checkbox" id="rm"> Recuérdame</label><a href="#" class="lnk" id="fg">Olvidé mi clave</a></div>'
+      + '<div class="err"></div><button class="btn" id="go">Entrar</button>';
+    var u = $('#u'), p = $('#p'), b = $('#go');
+    u.focus();
+    var send = function () {
+      if (!u.value.trim() || !p.value) return err('Escribe tu usuario y tu clave.');
+      busy(b, true); err('');
+      C.api('auth/login', {username: u.value, password: p.value, remember: $('#rm').checked}).then(function (d) {
+        busy(b, false);
+        if (!d.ok_) return err(C.msg(d));
+        d.user.mustChange ? first() : go();
+      });
+    };
+    b.onclick = send; p.onkeydown = u.onkeydown = function (e) { if (e.key === 'Enter') send(); };
+    $('#fg').onclick = function (e) { e.preventDefault(); forgot(); };
+  }
+
+  /* primer ingreso: crea tu clave (ojo abierto, sin pegar al repetirla) */
+  function first() {
+    box.innerHTML = head('Crea tu clave', 'Es tu primer ingreso. Elige una clave que solo tú conozcas.')
+      + '<label for="n1">Clave nueva (mínimo 8 caracteres)</label>' + C.pw('n1', {visible: true, auto: 'new-password'})
+      + '<label for="n2">Repite la clave (escríbela, no se puede pegar)</label>' + C.pw('n2', {visible: true, nopaste: true, auto: 'off'})
+      + '<div class="err"></div><button class="btn" id="go">Guardar clave</button>';
+    var b = $('#go');
+    b.onclick = function () {
+      if (val('n1').length < 8) return err('La clave debe tener al menos 8 caracteres.');
+      if (val('n1') !== val('n2')) return err('Las dos claves no coinciden.');
+      busy(b, true); err('');
+      C.api('auth/first', {password: val('n1')}).then(function (d) {
+        busy(b, false);
+        if (!d.ok_) return err(C.msg(d));
+        C.showRecovery(d.recovery, go);
+      });
+    };
+  }
+
+  function forgot() {
+    box.innerHTML = head('Olvidé mi clave', 'Escribe tu usuario y tu código de recuperación.')
+      + '<label for="u">Usuario</label><input class="in" id="u" autocapitalize="off" spellcheck="false">'
+      + '<label for="c">Código de recuperación</label><input class="in" id="c" placeholder="REC-XXXX-XXXX-XXXX-XXXX" autocapitalize="characters" spellcheck="false" autocomplete="off">'
+      + '<label for="n1">Clave nueva (mínimo 8 caracteres)</label>' + C.pw('n1', {visible: true, auto: 'new-password'})
+      + '<label for="n2">Repite la clave (no se puede pegar)</label>' + C.pw('n2', {visible: true, nopaste: true})
+      + '<div class="err"></div><button class="btn" id="go">Crear clave nueva</button>'
+      + '<div class="row"><a href="#" class="lnk" id="bk">Volver</a><a href="#" class="lnk" id="hp">No tengo el código</a></div>';
+    var b = $('#go');
+    b.onclick = function () {
+      if (!val('u').trim() || !val('c').trim()) return err('Escribe tu usuario y tu código.');
+      if (val('n1').length < 8) return err('La clave debe tener al menos 8 caracteres.');
+      if (val('n1') !== val('n2')) return err('Las dos claves no coinciden.');
+      busy(b, true); err('');
+      C.api('auth/forgot', {username: val('u'), code: val('c'), password: val('n1')}).then(function (d) {
+        busy(b, false);
+        if (!d.ok_) return err(C.msg(d));
+        C.showRecovery(d.recovery, go);
+      });
+    };
+    $('#bk').onclick = function (e) { e.preventDefault(); login(); };
+    $('#hp').onclick = function (e) { e.preventDefault(); help(); };
+  }
+
+  function help() {
+    box.innerHTML = head('Pedir ayuda', 'Avisamos al administrador para que te genere una clave nueva.')
+      + '<label for="u">Tu usuario</label><input class="in" id="u" autocapitalize="off" spellcheck="false">'
+      + '<div class="err"></div><button class="btn" id="go">Avisar al administrador</button><div class="row"><a href="#" class="lnk" id="bk">Volver</a></div>';
+    $('#go').onclick = function () {
+      if (!val('u').trim()) return err('Escribe tu usuario.');
+      C.api('auth/help', {username: val('u')}).then(function (d) {
+        if (!d.ok_) return err(C.msg(d));
+        box.innerHTML = head('Aviso enviado', 'Si el usuario existe, el administrador ya lo ve en su panel. Cuando te dé tu clave nueva, entra con ella.') + '<button class="btn" id="bk">Volver a entrar</button>';
+        $('#bk').onclick = login;
+      });
+    };
+    $('#bk').onclick = function (e) { e.preventDefault(); login(); };
+  }
+
+  C.api('auth/me').then(function (d) {
+    if (d.ok_ && d.user) return d.user.mustChange ? first() : go();
+    login();
+  });
+})();
+</script></body></html>
