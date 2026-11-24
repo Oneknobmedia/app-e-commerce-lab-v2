@@ -3,7 +3,9 @@
 Editor de catálogos «E-commerce Lab» + Worker de Cloudflare que lo sirve.
 En vivo: https://oneknobmedia.com/e-commerce-lab/
 
-**Versión de este repositorio: v2.10.7** (Worker `e-commerce-lab`, id `5c626e41-2c8b-4657-b053-02e953f16e02`).
+**Versión de este repositorio: v2.10.13** (Worker `e-commerce-lab`).
+
+Checkout regional: 346 comunas, búsqueda tolerante a tildes, orden desde Lampa, entrega a domicilio o Punto Blue y validación inline. Tarifas, regiones con envío gratis, mínimo promocional y cotización por WhatsApp son editables; los importes usan la moneda de la tienda. Se incluyen todos los cambios de v2.10.8–v2.10.12 y los controles de acceso de clientes.
 
 ## Estructura
 | Carpeta / archivo | Qué es |

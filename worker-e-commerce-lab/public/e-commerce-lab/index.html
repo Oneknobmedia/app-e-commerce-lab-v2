@@ -499,6 +499,21 @@ html.lb-on,html.lb-on body{overflow:hidden}
 .mcart{padding-bottom:12px}
 /* carrito: punto medio entre un tercio y la mitad; su contenido se acomoda al ancho */
 #cartp{width:max(41.667%,170px);container-type:inline-size}
+#ship-dest{border-top:0;padding-bottom:16px}
+#ship-dest .ed-seg{margin-top:8px}
+#ship-dest .ed-seg button{min-height:44px}
+.ship-commune-label{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ship-search-toggle{min-height:36px;padding:0;color:inherit;text-decoration:underline;font-size:13px}
+#ship-search{margin-top:4px}
+#ship-commune-results:not(:empty){border:1px solid var(--line);border-radius:10px;margin-top:4px;overflow:auto;max-height:200px}
+#ship-commune-results button{display:flex;flex-direction:column;justify-content:center;gap:2px;width:100%;min-height:44px;padding:6px 10px;text-align:left}
+#ship-commune-results button+button{border-top:1px solid var(--line)}
+#ship-commune-results small{display:block;padding:4px 10px;color:var(--muted)}
+#ship-commune-results button small{padding:0}
+#ship-dest [aria-invalid="true"]{border-color:#dc2626}
+#ship-delivery-error:not(:empty){margin-top:6px}
+#cartp .ship-pick{min-height:44px;border:1px solid var(--line);border-radius:8px;padding:0 10px;color:var(--fg);background:var(--bg);font-size:14px;font-weight:700;text-decoration:underline}
+@media(max-width:600px){#cartp:not(.ed-pin){width:min(100vw,420px)}#cartp #cl{min-height:0}}
 #cartp .ci-r b{font-size:15px}
 @container (max-width:300px){
 #cartp .dh{padding:10px 4px 10px 10px}#cartp .dht{font-size:13px}
@@ -3459,13 +3474,17 @@ const T = k => { const v = S.store.t && S.store.t[k]; return v != null && String
    administrador edita. Los importes salen por fmt(): usan la moneda general de la tienda (S.store.cur), sin conversión.
    Envío gratis: subtotal de productos (ya con eventos y por mayor) ≥ mínimo. Sin cotizador, el rango min–max es informativo y no entra en el total. */
 const SHIP_DEF = {min: 100000, rmMin: 50000, lo: 2600, hi: 10000, zone: 'Todo Chile · entrega a domicilio'};
+const RM_REGION = 'Región Metropolitana';
 const shipInt = (v, d, lo = 0) => { if (v === undefined || v === null || v === '') return d; const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/\./g, '').replace(',', '.')); return isFinite(n) && n >= lo ? Math.round(n) : d; };
 function shipCfg() {
   const s = (S.store && S.store.ship) || {};
   let lo = shipInt(s.lo, SHIP_DEF.lo), hi = shipInt(s.hi, SHIP_DEF.hi);
   if (lo > hi) [lo, hi] = [hi, lo];
   return {on: s.on !== false, addr: s.addr !== false, free: s.free !== false, min: shipInt(s.min, SHIP_DEF.min, 1), lo, hi, zone: s.zone === undefined ? SHIP_DEF.zone : String(s.zone).trim().slice(0, 80),
-    mode: s.mode === 'region' ? 'region' : 'legacy', rmFree: s.rmFree !== false, rmMin: shipInt(s.rmMin, SHIP_DEF.rmMin, 1), rates: s.rates && typeof s.rates === 'object' ? s.rates : {}};
+    mode: s.mode === 'region' ? 'region' : 'legacy',
+    rmFree: s.rmFree !== false, rmMin: shipInt(s.rmMin, SHIP_DEF.rmMin, 1), quoteByChat: s.quoteByChat === true,
+    freeRegions: Array.isArray(s.freeRegions) ? [...new Set(s.freeRegions.filter(region => Object.hasOwn(COMUNAS_RAW, region)))] : [RM_REGION],
+    rates: s.rates && typeof s.rates === 'object' ? s.rates : {}};
 }
 function shipCalc(sub) {
   const c = shipCfg(); sub = Math.max(0, Math.round(Number(sub) || 0));
@@ -3473,10 +3492,11 @@ function shipCalc(sub) {
   if (c.mode === 'region') {
     const cm = comunaFind(ADDR.comuna), method = ADDR.method === 'point' ? 'point' : 'home';
     if (!cm || !ADDR.region || cm.region !== ADDR.region) return {mode: 'choose', lo: 0, hi: 0, falta: 0, zone: '', min: 0};
-    if (cm.region === 'Región Metropolitana' && c.rmFree && sub >= c.rmMin) return {mode: 'free', lo: 0, hi: 0, falta: 0, zone: '', min: c.rmMin};
+    const eligible = c.rmFree && c.freeRegions.includes(cm.region);
+    if (eligible && sub >= c.rmMin) return {mode: 'free', lo: 0, hi: 0, falta: 0, zone: '', min: c.rmMin};
     const ix = Object.keys(COMUNAS_RAW).indexOf(cm.region), value = c.rates[ix] && c.rates[ix][method];
-    const price = shipInt(value, undefined);
-    const falta = cm.region === 'Región Metropolitana' && c.rmFree ? c.rmMin - sub : 0;
+    const price = shipInt(value, undefined, 1);
+    const falta = eligible ? c.rmMin - sub : 0;
     return price === undefined ? {mode: 'pending', lo: 0, hi: 0, falta, zone: '', min: c.rmMin}
       : {mode: 'fixed', lo: price, hi: price, falta, zone: '', min: c.rmMin};
   }
@@ -3488,7 +3508,8 @@ function shipView(sub) {
   const sc = shipCalc(sub);
   if (sc.mode === 'off') return {sc, on: false, known: true, total: sub};
   const known = sc.mode === 'free' || sc.mode === 'fixed';
-  return {sc, on: true, known, lbl: sc.mode === 'range' ? T('shipEst') : T('ship'),
+  const quote = sc.mode === 'pending' && shipCfg().quoteByChat;
+  return {sc, on: true, known, quote, lbl: sc.mode === 'range' ? T('shipEst') : T('ship'),
     amt: sc.mode === 'free' ? T('shipFree') : sc.mode === 'fixed' ? fmt(sc.lo) : sc.mode === 'choose' ? 'Elige tu comuna' : sc.mode === 'pending' ? 'Por confirmar' : fmt(sc.lo) + ' – ' + fmt(sc.hi),
     total: known ? sub + (sc.mode === 'fixed' ? sc.lo : 0) : null,
     miss: sc.falta > 0 ? T('shipMiss').replace('{n}', fmt(sc.falta)) : ''};
@@ -3496,7 +3517,7 @@ function shipView(sub) {
 /* mismas líneas en el texto del pedido: coherente con el carrito */
 function shipLines(sub) {
   const v = shipView(sub); if (!v.on) return null;
-  return [T('sub') + ': ' + fmt(sub), v.lbl + ': ' + v.amt + (v.sc.mode === 'range' ? ' (se confirma)' : ''), v.known ? T('totFin') + ': ' + fmt(v.total) : T('totPend')];
+  return [T('sub') + ': ' + fmt(sub), v.lbl + ': ' + v.amt + (v.sc.mode === 'range' ? ' (se confirma)' : ''), v.known ? T('totFin') + ': ' + fmt(v.total) : v.quote ? 'Total: pendiente de confirmar el despacho' : T('totPend')];
 }
 // SHIP-CORE:end
 // ADDR-CORE:start
@@ -4009,9 +4030,10 @@ function waText() {
     return [(items.length > 1 ? (i + 1) + '. ' : '') + '*' + String(p.desc || 'Producto').replace(/\*/g, '') + '*', sz ? (isMd(p) ? mdWa(sz) : 'Talla: ' + sz) : '', nColors(p) > 1 ? 'Color: ' + cName(p, c) : '',
       'Precio: ' + fmt(u) + ({may: ' (por mayor)', ev: ' (' + evNote(p) + ')'}[unitWhy(p, tq[p.id])] || ''), q > 1 ? 'Cantidad: ' + q + ' = ' + fmt(q * u) : ''].filter(Boolean).join('\n');
   });
+  const shipping = shipView(tot);
   const sl = shipLines(tot), al = addrOn() ? addrLines(ADDR, addrStrict()) : null;
   return (region ? 'MI PEDIDO #' + orderId() : waHead(n === 1)) + '\n\n' + blk.join('\n\n') + (sl ? '\n\n' + sl.join('\n') : n > 1 ? '\n\n' + T('total') + ': ' + fmt(tot) : '')
-    + (region ? '\n\n' + shipDestLines().join('\n') + '\n\nPedido sujeto a confirmación de stock. Pago por transferencia después de la confirmación.' : al ? '\n\n' + al.join('\n') : nm ? '\n\nMi nombre: ' + nm : '');
+    + (region ? '\n\n' + shipDestLines().join('\n') + (shipping.quote ? '\n\nLa tienda confirmará el stock, el costo de envío y el total antes de la transferencia.' : '\n\nPedido sujeto a confirmación de stock. Pago por transferencia después de la confirmación.') : al ? '\n\n' + al.join('\n') : nm ? '\n\nMi nombre: ' + nm : '');
 }
 const orderMsg = () => viaWa() ? waText() : orderText();
 const custName = () => '';
@@ -4043,21 +4065,90 @@ let ADDR = Object.assign({nombre: '', tel: '', region: '', comuna: '', calle: ''
 if (!ADDR.region && comunaFind(ADDR.comuna)) ADDR.region = comunaFind(ADDR.comuna).region;
 const ADDR_F = [['nombre', 'Nombre y apellido', 'text', 'name', 'Ej. Juan Pérez'], ['tel', 'Teléfono', 'tel', 'tel', 'Ej. +56 9 1234 5678'], ['comuna', '', 'text', 'address-level2', ''],
   ['calle', 'Calle y número', 'text', 'address-line1', 'Ej. Av. Los Leones 1234'], ['depto', 'Depto / casa / condominio (opcional)', 'text', 'address-line2', 'Ej. Depto 402, Torre B'], ['ref', 'Referencia (opcional)', 'text', 'off', 'Ej. portón negro, junto a la farmacia']];
+// Orden de presentación desde Lampa. Los índices de tarifa de COMUNAS_RAW no cambian.
+// Distancia en línea recta estimada con los centroides de la DPA publicada por la SMA.
+const SHIP_REGION_ORDER = [6, 5, 7, 4, 8, 9, 10, 3, 11, 12, 13, 2, 14, 1, 0, 15];
+const SHIP_COMMUNE_ORDER = [
+  [1, 0, 2, 3],
+  [0, 2, 6, 1, 5, 3, 4],
+  [3, 0, 2, 6, 1, 8, 4, 7, 5],
+  [6, 7, 5, 8, 2, 0, 1, 3, 4],
+  [8, 9, 6, 7, 11, 13, 12, 10, 14, 2, 4, 1, 5, 0, 3],
+  [9, 36, 10, 30, 34, 19, 35, 31, 37, 8, 1, 28, 17, 24, 18, 29, 33, 20, 22, 6, 2, 23, 26, 11, 0, 21, 25, 5, 4, 32, 16, 13, 27, 14, 12, 15, 3, 7],
+  [36, 24, 27, 3, 6, 2, 25, 7, 26, 16, 23, 5, 0, 31, 22, 20, 1, 19, 18, 29, 28, 15, 17, 12, 8, 35, 13, 30, 10, 21, 4, 50, 9, 11, 37, 44, 40, 38, 32, 51, 14, 47, 48, 39, 45, 33, 49, 41, 42, 34, 43, 46],
+  [9, 5, 1, 0, 4, 10, 6, 3, 2, 15, 13, 7, 11, 21, 14, 19, 18, 8, 12, 16, 20, 29, 28, 30, 27, 23, 32, 17, 25, 31, 24, 26, 22],
+  [20, 17, 18, 14, 21, 13, 19, 15, 7, 16, 2, 9, 5, 6, 0, 4, 8, 1, 29, 28, 27, 3, 22, 23, 11, 26, 24, 10, 12, 25],
+  [18, 16, 9, 10, 19, 12, 20, 17, 15, 0, 13, 2, 11, 14, 5, 7, 1, 3, 6, 4, 8],
+  [10, 3, 6, 9, 0, 21, 11, 30, 2, 20, 7, 31, 4, 1, 28, 27, 5, 22, 19, 8, 29, 24, 13, 25, 32, 16, 23, 26, 17, 12, 14, 15, 18],
+  [29, 21, 22, 24, 26, 28, 31, 30, 25, 23, 13, 27, 8, 6, 19, 2, 10, 0, 1, 12, 11, 3, 5, 16, 14, 17, 15, 4, 7, 20, 18, 9],
+  [2, 5, 7, 4, 3, 0, 9, 6, 1, 10, 8, 11],
+  [25, 22, 19, 24, 23, 20, 21, 8, 4, 6, 3, 0, 5, 2, 7, 1, 28, 10, 17, 13, 12, 18, 9, 14, 11, 15, 26, 27, 16, 29],
+  [4, 1, 3, 0, 2, 9, 8, 5, 7, 6],
+  [9, 10, 3, 1, 7, 2, 6, 0, 8, 4, 5]
+];
+let SHIP_REGION_FILTER = '';
+function shipCommuneGroups(region = '') {
+  const regions = Object.entries(COMUNAS_RAW);
+  return SHIP_REGION_ORDER.map(index => {
+    const [name, raw] = regions[index];
+    const communes = raw.split(',');
+    return [name, SHIP_COMMUNE_ORDER[index].map(i => communes[i])];
+  }).filter(([name]) => !region || region === name);
+}
+function shipComunaOptions(region = '') {
+  const current = comunaFind(ADDR.comuna);
+  const groups = shipCommuneGroups(region).map(([name, communes]) =>
+    `<optgroup label="${esc(name)}">${communes.map(comuna => `<option value="${esc(comuna)}"${current?.name === comuna ? ' selected' : ''}>${esc(comuna)}</option>`).join('')}</optgroup>`
+  );
+  return '<option value="">Elige tu comuna</option>' + groups.join('');
+}
+function shipLocationHTML() {
+  const regions = Object.keys(COMUNAS_RAW);
+  return `<label class="ad-f"><span>Región</span><select id="ship-region" data-shipfield="region"><option value="">Todo Chile</option>${SHIP_REGION_ORDER.map(i => {
+    const region = regions[i];
+    return `<option value="${esc(region)}"${SHIP_REGION_FILTER === region ? ' selected' : ''}>${esc(region)}</option>`;
+  }).join('')}</select></label>
+    <div class="ad-f">
+      <div class="ship-commune-label"><label for="ship-comuna">Comuna</label><button type="button" class="ship-search-toggle" data-a="ship-search" aria-expanded="false" aria-controls="ship-search">Buscar por nombre</button></div>
+      <select id="ship-comuna" data-shipfield="comuna" autocomplete="address-level2">${shipComunaOptions(SHIP_REGION_FILTER)}</select>
+      <div id="ship-search" hidden>
+        <input id="ship-comuna-search" type="search" autocomplete="off" placeholder="Ej. Quilicura" aria-label="Buscar comuna">
+        <div id="ship-commune-results" aria-live="polite"></div>
+      </div>
+    </div>`;
+}
+function shipSearchResults(value) {
+  const query = addrKey(value);
+  if (!query) return '';
+  const matches = shipCommuneGroups(SHIP_REGION_FILTER).flatMap(([region, communes]) =>
+    communes.filter(name => addrKey(name).includes(query)).map(name => ({name, region}))
+  );
+  if (!matches.length) return '<small class="ad-h">No encontramos esa comuna.</small>';
+  matches.sort((a, b) => Number(addrKey(b.name) === query) - Number(addrKey(a.name) === query));
+  return matches.slice(0, 8).map(({name, region}) =>
+    `<button type="button" data-a="ship-search-result" data-comuna="${esc(name)}"><b>${esc(name)}</b><small>${esc(region)}</small></button>`
+  ).join('');
+}
 function shipDestHTML() {
   const c = shipCfg(); if (!c.on || c.mode !== 'region') return '';
-  const cm = comunaFind(ADDR.comuna), point = ADDR.method === 'point';
-  const regions = Object.keys(COMUNAS_RAW), options = ADDR.region && COMUNAS_RAW[ADDR.region] ? COMUNAS_RAW[ADDR.region].split(',') : [];
+  const point = ADDR.method === 'point';
   const field = (k, label, ac, ph) => `<label class="ad-f"><span>${label}</span><input data-shipfield="${k}" type="${k === 'tel' ? 'tel' : 'text'}" autocomplete="${ac}" placeholder="${ph}" value="${esc(ADDR[k] || '')}" maxlength="80" ${k === 'tel' ? 'inputmode="tel"' : ''}></label>`;
-  return `<div class="ad ad-form" id="ship-dest"><b>Datos de entrega</b>`
+  return `<section class="ad ad-form" id="ship-dest" aria-label="Datos de entrega"><b>Datos de entrega</b>` + shipLocationHTML()
     + `<div class="ed-seg" role="group" aria-label="Tipo de entrega"><button type="button" data-a="ship-method" data-method="home" aria-pressed="${!point}" class="${point ? '' : 'on'}">A domicilio</button><button type="button" data-a="ship-method" data-method="point" aria-pressed="${point}" class="${point ? 'on' : ''}">Punto Blue</button></div>`
-    + `<label class="ad-f"><span>Región</span><select id="ship-region" data-shipfield="region"><option value="">Elige tu región</option>${regions.map(r => `<option value="${esc(r)}"${ADDR.region === r ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select></label>`
-    + `<label class="ad-f"><span>Comuna</span><input id="ship-comuna" data-shipfield="comuna" type="text" list="ship-comunas" autocomplete="address-level2" placeholder="${ADDR.region ? 'Busca tu comuna' : 'Primero elige tu región'}" value="${esc(ADDR.comuna)}" ${ADDR.region ? '' : 'disabled'}><datalist id="ship-comunas">${options.map(n => `<option value="${esc(n)}"></option>`).join('')}</datalist></label>`
-    + `<small class="ad-h">${cm && cm.region === ADDR.region ? 'Envío actualizado para ' + esc(cm.name) : 'Elige tu comuna para ver el envío'}</small>`
+    + (point ? field('point', 'Punto Blue elegido', 'off', 'Nombre o dirección del punto') + '<small class="ad-h"><a href="https://www.blue.cl/lockers-puntos/encuentra-tu-punto" target="_blank" rel="noopener">Buscar un Punto Blue</a></small>' : field('calle', 'Calle y número', 'street-address', 'Av. Principal 123') + field('depto', 'Depto o referencia (opcional)', 'address-line2', 'Ej. Depto 4'))
     + field('nombre', 'Nombre y apellido', 'name', 'Tu nombre') + field('tel', 'Teléfono', 'tel', '+56 9 1234 5678')
-    + (point ? field('point', 'Punto Blue elegido', 'off', 'Nombre o dirección del punto') + '<small class="ad-h"><a href="https://www.blue.cl/lockers-puntos/encuentra-tu-punto" target="_blank" rel="noopener">Buscar un Punto Blue</a> · Confirmaremos su disponibilidad por WhatsApp.</small>' : field('calle', 'Calle y número', 'street-address', 'Av. Principal 123') + field('depto', 'Depto o referencia (opcional)', 'address-line2', 'Depto 4')) + '</div>';
+    + '<small class="ad-e" id="ship-delivery-error" role="alert"></small></section>';
 }
 const shipDestLines = () => { const cm = comunaFind(ADDR.comuna), point = ADDR.method === 'point'; return cm ? ['Entrega: ' + (point ? 'Punto Blue' : 'A domicilio'), 'Destino: ' + cm.name + ', ' + cm.region, ...(point ? ['Punto elegido: ' + String(ADDR.point || '').trim()] : ['Dirección: ' + ADDR.calle.trim() + (ADDR.depto.trim() ? ', ' + ADDR.depto.trim() : '')]), 'Nombre: ' + ADDR.nombre.trim(), 'Teléfono: ' + phoneFmt(ADDR.tel)] : []; };
-const shipDestMissing = () => !ADDR.region ? 'region' : !comunaFind(ADDR.comuna) || comunaFind(ADDR.comuna).region !== ADDR.region ? 'comuna' : String(ADDR.nombre || '').trim().split(/\s+/).filter(w => w.length > 1).length < 2 ? 'nombre' : phoneDigits(ADDR.tel).length < 8 || phoneDigits(ADDR.tel).length > 15 ? 'tel' : ADDR.method === 'point' ? (!String(ADDR.point || '').trim() ? 'point' : '') : (!String(ADDR.calle || '').trim() || !(/\d/.test(ADDR.calle) || /\bs\/?n\b|sin n[uú]mero/i.test(ADDR.calle)) ? 'calle' : '');
+const shipDestMissing = () => {
+  if (!ADDR.region || comunaFind(ADDR.comuna)?.region !== ADDR.region) return 'comuna';
+  if (ADDR.method === 'point') {
+    if (!String(ADDR.point || '').trim()) return 'point';
+  } else if (!/\d|\bs\/?n\b|sin n[uú]mero/i.test(String(ADDR.calle || ''))) return 'calle';
+  if (String(ADDR.nombre || '').trim().split(/\s+/).filter(word => word.length > 1).length < 2) return 'nombre';
+  const digits = phoneDigits(ADDR.tel).length;
+  return digits < 8 || digits > 15 ? 'tel' : '';
+};
 /* en el carrito (angosto) solo va un resumen o el botón; el formulario se abre en una ventana a pantalla del ancho del aparato */
 function addrHTML() {
   if (!addrOn()) return '';
@@ -4088,12 +4179,37 @@ function addrDialog() {
   }}], 'mb-ad');
   const w = $('#ad'), first = w && ([...w.querySelectorAll('[data-ad]')].find(i => !i.value.trim()) || w.querySelector('[data-ad]')); if (first) setTimeout(() => first.focus({preventScroll: true}), 50);
 }
-/* antes de enviar: si falta algo no se envía y se abre el formulario */
+function clearShipError() {
+  const hint = $('#ship-delivery-error');
+  if (hint) hint.textContent = '';
+  const field = $('#ship-dest [aria-invalid="true"]');
+  if (field) {
+    field.removeAttribute('aria-invalid');
+    field.removeAttribute('aria-describedby');
+  }
+}
+/* antes de enviar, valida la entrega en el orden del formulario */
 function addrGate() {
   if (shipCfg().on && shipCfg().mode === 'region' && !edit) {
     const missing = shipDestMissing();
-    if (missing) { toast('Completa tus datos de entrega'); $('#ship-dest [data-shipfield="' + missing + '"]')?.focus(); return false; }
-    if (!shipView(cartSum().tot).known) { toast('Esta entrega aún no tiene tarifa configurada'); return false; }
+    if (missing) {
+      const message = {comuna: 'Elige tu comuna.', calle: 'Escribe tu calle y número.', point: 'Indica tu Punto Blue.', nombre: 'Escribe tu nombre y apellido.', tel: 'Revisa tu número de teléfono.'}[missing];
+      const field = $('#ship-dest [data-shipfield="' + missing + '"]');
+      clearShipError();
+      const error = field?.closest('.ad-f');
+      if (field && error) {
+        field.setAttribute('aria-invalid', 'true');
+        field.setAttribute('aria-describedby', 'ship-delivery-error');
+        const hint = $('#ship-delivery-error');
+        error.append(hint);
+        hint.textContent = message;
+        field.scrollIntoView({block: 'center'});
+        field.focus({preventScroll: true});
+      }
+      return false;
+    }
+    const shipping = shipView(cartSum().tot);
+    if (!shipping.known && !shipping.quote) { toast('Esta entrega aún no tiene tarifa configurada'); return false; }
     return true;
   }
   if (!addrOn() || edit) return true;
@@ -4124,9 +4240,10 @@ function renderCart() {
   const wa = viaWa();
   const sv = shipView(tot);
   const totRows = !sv.on ? `<div class="tt"><span>${esc(T('total'))}</span><b>${fmt(tot)}</b></div>`
-    : `<div><span>${esc(T('sub'))}</span><b>${fmt(tot)}</b></div><div class="ship${sv.sc.mode === 'free' ? ' free' : ''}"><span>${esc(sv.lbl)}</span><b>${esc(sv.amt)}</b></div>`
+    : `<div><span>${esc(T('sub'))}</span><b>${fmt(tot)}</b></div><div class="ship${sv.sc.mode === 'free' ? ' free' : ''}"><span>${esc(sv.lbl)}</span>${sv.sc.mode === 'choose' ? '<button type="button" class="ship-pick" data-a="ship-pick">Elegir comuna</button>' : '<b>' + esc(sv.amt) + '</b>'}</div>`
       + (sv.miss ? `<div class="ship-n"><span>${esc(sv.miss)}</span></div>` : '') + (sv.sc.zone ? `<div class="ship-n"><span>${esc(sv.sc.zone)}</span></div>` : '')
-       + (sv.known ? `<div class="tt"><span>${esc(T('totFin'))}</span><b>${fmt(sv.total)}</b></div>` : `<div class="tt"><span>${esc(T('totPend'))}</span></div>`);
+       + (sv.known ? `<div class="tt"><span>${esc(T('totFin'))}</span><b>${fmt(sv.total)}</b></div>` : `<div class="tt"><span>${esc(sv.quote ? 'Total por confirmar' : T('totPend'))}</span></div>`)
+       + (sv.quote ? '<div class="ship-n"><span>Te confirmaremos el costo de envío por WhatsApp antes del pago.</span></div>' : '');
   cf.innerHTML = `<div class="tot" data-lid="win:cart:tot">${base > be ? `<div><span>Descuento de eventos</span><b>−${fmt(base - be)}</b></div>` : ''}${be > tot ? `<div><span>${esc(T('save'))}</span><b>−${fmt(be - tot)}</b></div>` : ''}${totRows}</div>`
     + (wa ? `<a class="send mt" id="send" data-lid="win:cart:send" data-a="send-wa" href="${esc(waHref(waText()))}" target="_blank" rel="noopener">${IC.wa}<span data-edit>${esc(sendLbl())}</span></a>`
       : `<button type="button" class="send mt" id="send" data-lid="win:cart:send" data-a="send">${IC.mail}<span data-edit>${esc(sendLbl())}</span></button>`);
@@ -4493,7 +4610,7 @@ const lockMove = e => {
 };
 document.addEventListener('touchmove', lockMove, {passive: false});
 document.addEventListener('wheel', lockMove, {passive: false});
-function open(id) { close(); if (!edit) document.documentElement.classList.add('dr-on'); $('#ov').classList.add('on'); $(id).classList.add('on'); if (id === '#cartp') renderCart(); else fitMenu(); setTab(id === '#cartp' ? 'cart' : 'menu'); fcart(); }
+function open(id) { close(); if (!edit) document.documentElement.classList.add('dr-on'); $('#ov').classList.add('on'); $(id).classList.add('on'); if (id === '#cartp') { SHIP_REGION_FILTER = ''; renderCart(); } else fitMenu(); setTab(id === '#cartp' ? 'cart' : 'menu'); fcart(); }
 function close() { document.documentElement.classList.remove('dr-on'); ['#ov', '#menu', '#cartp'].forEach(s => $(s).classList.remove('on')); setTab(tabBase); fcart(); }
 
 /* ---------- exportar / publicar ---------- */
@@ -4691,6 +4808,29 @@ document.addEventListener('click', async e => {
     case 'lb-sz': LB.sz = LB.sz === b.dataset.s ? '' : b.dataset.s; lbRender(); break;
     case 'lb-need': { const z = $('#lb-sz'); if (z) { z.classList.remove('need'); void z.offsetWidth; z.classList.add('need'); } toast(isMd(prod(LB.pid)) ? 'Elige un modelo para agregar este color' : 'Elige una talla para agregar este color'); break; }
     case 'ad-open': addrDialog(); break;
+    case 'ship-pick': {
+      const field = $('#ship-comuna');
+      if (field) {
+        field.scrollIntoView({block: 'center'});
+        field.focus({preventScroll: true});
+        try { field.showPicker?.(); } catch (e) {}
+      }
+      break;
+    }
+    case 'ship-search': {
+      const search = $('#ship-search');
+      search.hidden = !search.hidden;
+      b.setAttribute('aria-expanded', String(!search.hidden));
+      if (!search.hidden) $('#ship-comuna-search').focus();
+      break;
+    }
+    case 'ship-search-result': {
+      const field = $('#ship-comuna');
+      field.value = b.dataset.comuna;
+      field.dispatchEvent(new Event('change', {bubbles: true}));
+      $('#ship-comuna')?.focus({preventScroll: true});
+      break;
+    }
     case 'ship-method': ADDR.method = b.dataset.method === 'point' ? 'point' : 'home'; lsSet('catgen2:addr', ADDR); renderCart(); break;
     case 'ad-clear': { ADDR = {nombre: '', tel: '', comuna: '', calle: '', depto: '', ref: ''}; ADDR_TRY = false; lsSet('catgen2:addr', null); const w = $('#ad'); if (w) { w.querySelectorAll('[data-ad]').forEach(i => { i.value = ''; }); w.querySelectorAll('[data-ade],#ad-reg').forEach(s => { s.textContent = ''; }); } renderCart(); toast('Tus datos se borraron de este aparato'); break; }
     case 'send-wa': if (edit) { e.preventDefault(); break; } if (!addrGate()) { e.preventDefault(); break; } b.href = waHref(waText()); toast('Abriendo WhatsApp con tu pedido…'); break;
@@ -4761,8 +4901,39 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { if (mdRes) closeModal(false); else if (!$('#srch').hidden && e.target.id === 'q') toggleSearch(false); else close(); }
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('#cat .ph[data-a="zoom"]') && !edit) { e.preventDefault(); openLB(e.target.dataset.id); }
 });
-document.addEventListener('input', e => { const k = e.target.dataset && e.target.dataset.shipfield; if (k) { ADDR[k] = e.target.value; lsSet('catgen2:addr', ADDR); if (k === 'comuna' && comunaFind(ADDR.comuna)) renderCart(); else { const s = $('#send'); if (s && s.tagName === 'A' && viaWa()) s.href = waHref(waText()); } return; } if (e.target.id !== 'cname') return; lsSet(KEY + ':cname', e.target.value.slice(0, 60)); const s = $('#send'); if (s && s.tagName === 'A' && viaWa()) s.href = waHref(waText()); });
-document.addEventListener('change', e => { if (e.target.id === 'ship-region') { ADDR.region = e.target.value; ADDR.comuna = ''; lsSet('catgen2:addr', ADDR); renderCart(); $('#ship-comuna')?.focus(); } else if (e.target.id === 'ship-comuna') { ADDR.comuna = e.target.value; lsSet('catgen2:addr', ADDR); renderCart(); } });
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'ship-comuna-search') {
+    $('#ship-commune-results').innerHTML = shipSearchResults(t.value);
+    return;
+  }
+  const k = t.dataset?.shipfield;
+  if (k && k !== 'region' && k !== 'comuna') {
+    ADDR[k] = t.value;
+    if (t.getAttribute('aria-invalid') === 'true') clearShipError();
+    lsSet('catgen2:addr', ADDR);
+    const send = $('#send');
+    if (send?.tagName === 'A' && viaWa()) send.href = waHref(waText());
+  } else if (t.matches('[data-ad]')) addrInput(t);
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.id === 'ship-region') {
+    SHIP_REGION_FILTER = Object.hasOwn(COMUNAS_RAW, t.value) ? t.value : '';
+    if (SHIP_REGION_FILTER && comunaFind(ADDR.comuna)?.region !== SHIP_REGION_FILTER) {
+      ADDR.comuna = '';
+      ADDR.region = '';
+    }
+  } else if (t.id === 'ship-comuna') {
+    const comuna = comunaFind(t.value);
+    ADDR.comuna = comuna?.name || '';
+    ADDR.region = comuna?.region || '';
+  } else return;
+  lsSet('catgen2:addr', ADDR);
+  const hadFocus = document.activeElement === t;
+  renderCart();
+  if (hadFocus) document.getElementById(t.id)?.focus({preventScroll: true});
+});
 
 /* búsqueda: filtra por nombre del producto o de la categoría mientras se escribe */
 function toggleSearch(on, quiet) {
@@ -8240,7 +8411,13 @@ function fieldHTML(f) {
   }
 }
 const fs = list => list.map(fieldHTML).join('');
-const tgl = (label, on, act) => `<button type="button" class="ed-tg${on ? ' on' : ''}" data-act="${act}" aria-pressed="${!!on}">${esc(label)}</button>`;
+const tgl = (label, on, act, option) => `<button type="button" class="ed-tg${on ? ' on' : ''}" data-act="${act}"${option === undefined ? '' : ' data-option="' + esc(option) + '"'} aria-pressed="${!!on}">${esc(label)}</button>`;
+const CUSTOMER_LOGIN_METHODS = {google: 'Google', apple: 'Apple', microsoft: 'Microsoft', email: 'Correo electrónico'};
+function customerLoginCfg() {
+  const saved = S.store.customerLogin || {};
+  const methods = Array.isArray(saved.methods) ? saved.methods.filter(method => Object.hasOwn(CUSTOMER_LOGIN_METHODS, method)) : Object.keys(CUSTOMER_LOGIN_METHODS);
+  return {enabled: saved.enabled === true, methods};
+}
 const btn = (label, act, extra) => `<button type="button" class="ed-b" data-act="${act}"${extra || ''}>${esc(label)}</button>`;
 
 function deformSec(l, one) {
@@ -8505,17 +8682,25 @@ function docProps() {
       const head = `<div class="ed-tgs w">${tgl('Mostrar envío en el carrito', true, 'ship-on')}</div>`
         + `<div class="ed-tgs w">${tgl('Precio por región de Chile', c.mode === 'region', 'ship-region')}</div>`;
       if (c.mode === 'region') {
-        const rates = Object.keys(COMUNAS_RAW).map((region, i) => `<details class="ed-f w"><summary>${esc(region)}</summary>`
-          + fs([F.num('A domicilio', '@store.ship.rates.' + i + '.home', {min: 0, ph: 'Precio al cliente'}), F.num('Punto Blue', '@store.ship.rates.' + i + '.point', {min: 0, ph: 'Precio al cliente'})]) + `</details>`).join('');
-        return head + `<div class="ed-tgs w">${tgl('Envío gratis solo en Región Metropolitana', c.rmFree, 'ship-rm-free')}</div>`
-          + (c.rmFree ? fs([F.num('Compra mínima para envío gratis RM', '@store.ship.rmMin', {min: 1, ph: String(SHIP_DEF.rmMin)})]) : '') + rates;
+        const regions = Object.keys(COMUNAS_RAW);
+        const rates = regions.map((region, i) => `<details class="ed-f w"><summary>${esc(region)}</summary>`
+          + fs([F.num('A domicilio', '@store.ship.rates.' + i + '.home', {min: 1, ph: 'Precio al cliente'}), F.num('Punto Blue', '@store.ship.rates.' + i + '.point', {min: 1, ph: 'Precio al cliente'})]) + `</details>`).join('');
+        const free = c.rmFree ? fs([F.num('Compra mínima para envío gratis', '@store.ship.rmMin', {min: 1, ph: String(SHIP_DEF.rmMin)})])
+          + `<details class="ed-f w"><summary>Regiones con envío gratis · ${c.freeRegions.length}</summary><div class="ed-tgs w">${regions.map(region => tgl(region, c.freeRegions.includes(region), 'ship-free-region', region)).join('')}</div></details>` : '';
+        return head + `<div class="ed-tgs w">${tgl('Activar envío gratis por región', c.rmFree, 'ship-rm-free')}${tgl('Cotizar por mensaje si falta tarifa', c.quoteByChat, 'ship-quote')}</div>` + free + rates;
       }
       return head + `<div class="ed-tgs w">${tgl('Pedir dirección de envío al cliente', c.addr, 'ship-addr')}</div><div class="ed-tgs w">${tgl('Envío gratis automático', c.free, 'ship-free')}</div>`
         + fs([...(c.free ? [F.num('Compra mínima para envío gratis', '@store.ship.min', {min: 1, ph: String(SHIP_DEF.min)})] : []), F.num('Costo mínimo de envío', '@store.ship.lo', {min: 0, ph: String(SHIP_DEF.lo)}), F.num('Costo máximo de envío', '@store.ship.hi', {min: 0, ph: String(SHIP_DEF.hi)}), F.text('Cobertura', '@store.ship.zone', {wide: 1, max: 80, ph: SHIP_DEF.zone})]);
     })(), (() => { const c = shipCfg(); return c.mode === 'region' && c.on
-      ? `El cliente elige región, comuna y entrega en el carrito. ${c.rmFree ? `Solo en RM, desde <b>${esc(fmt(c.rmMin))}</b> en productos después de descuentos, el envío es gratis. Bajo ese monto se cobra la tarifa RM. ` : ''}Importes en ${esc(fmt(12990))} (moneda de esta tienda); configura precios a domicilio y Punto Blue en las regiones que ofrezcas, incluida RM bajo el mínimo. Sin tarifa, no se puede enviar el pedido a ese destino.`
+      ? `El cliente elige región, comuna y entrega en el carrito. ${c.rmFree && c.freeRegions.length ? `Envío gratis desde <b>${esc(fmt(c.rmMin))}</b> en productos después de descuentos, en ${esc(c.freeRegions.join(', '))}. En los demás casos se cobra la tarifa configurada. ` : ''}Importes en ${esc(fmt(12990))} (moneda de esta tienda); configura precios a domicilio y Punto Blue en las regiones que ofrezcas, incluida RM bajo el mínimo.  ${c.quoteByChat ? 'Si falta una tarifa, el cliente puede enviar su pedido para confirmar el costo por mensaje.' : 'Sin tarifa, no se puede enviar el pedido a ese destino.'}`
       : !c.on ? 'Apagado: el carrito no muestra envío y el total es solo el subtotal.'
       : `Los importes usan la moneda de la tienda (ahora: <b>${esc(fmt(12990))}</b>); si cambias de país o moneda, ajusta los montos a mano. ${c.free ? `Con una compra de <b>${esc(fmt(c.min))}</b> o más (después de descuentos) el envío es <b>GRATIS</b>. ` : ''}Por debajo se muestra el envío estimado <b>${esc(c.lo === c.hi ? fmt(c.lo) : fmt(c.lo) + ' – ' + fmt(c.hi))}</b> como referencia: no se suma al total hasta que la tienda confirme el costo real.`; })())
+    + sec('Cuentas de clientes', (() => {
+      const login = customerLoginCfg();
+      const methods = Object.entries(CUSTOMER_LOGIN_METHODS).map(([id, label]) => tgl(label, login.methods.includes(id), 'customer-login-method', id)).join('');
+      return `<div class="ed-tgs w">${tgl(login.enabled ? 'Desactivar login' : 'Activar login', login.enabled, 'customer-login-toggle')}</div>`
+        + (login.enabled ? `<div class="ed-tgs w" role="group" aria-label="Métodos de inicio de sesión">${methods}</div>` : '');
+    })(), 'Conexión de proveedores pendiente. El acceso aparecerá en la tienda cuando esté conectada.')
     + sec('Productos', `<div class="ed-tgs w"><button type="button" class="ed-b pri" data-act="bulk">Subir productos en lote…</button></div>`, `Arrastra la carpeta con las fotos de tus productos o hasta ${BULK_MAX} imágenes de una vez: cada foto crea un producto. Eliges un precio para todos o uno por producto.`)
     + sec('Precios por mayor', `<div class="ed-tgs w">${tgl('Mostrar precios por mayor', mayOn(), 'may')}</div>` + (mayOn() ? fs([F.num('Descuento %', '@store.pctMay', {min: 0, max: 90, ph: 'Ej. 10'}), F.num('Desde cuántas unidades', '@store.minMay', {min: 2, ph: '6'})]) + calcHTML(100) : ''),
       mayOn() ? `Encendido: cada producto muestra «Desde ${minQ()} u.» y el carrito cobra el precio por mayor desde esa cantidad. Con el % de descuento puesto, el precio por mayor se calcula solo al poner o cambiar el precio (puedes corregirlo a mano en cada producto).` : 'Apagado: el catálogo y el carrito usan solo el precio por unidad. Los precios por mayor quedan guardados para cuando lo vuelvas a encender.')
@@ -10936,6 +11121,33 @@ function bindUI() {
         if (!Object.keys(sh).length) delete S.store.ship;
         render(); renderProps(true); commit();
         toast(k === 'on' ? (cur ? 'Envío oculto en el carrito' : 'Envío visible en el carrito') : k === 'addr' ? (cur ? 'Ya no se pide dirección al cliente' : 'Se pide dirección al cliente') : (cur ? 'Envío gratis automático apagado' : 'Envío gratis automático activado')); break;
+      }
+      case 'customer-login-toggle': case 'customer-login-method': {
+        const login = customerLoginCfg();
+        if (a.dataset.act === 'customer-login-toggle') login.enabled = !login.enabled;
+        else {
+          const method = a.dataset.option;
+          if (!Object.hasOwn(CUSTOMER_LOGIN_METHODS, method)) break;
+          login.methods = login.methods.includes(method) ? login.methods.filter(value => value !== method) : [...login.methods, method];
+        }
+        S.store.customerLogin = login;
+        renderProps(true); commit(); break;
+      }
+      case 'ship-quote': {
+        const sh = S.store.ship = S.store.ship || {};
+        sh.quoteByChat = !shipCfg().quoteByChat;
+        render(); renderProps(true); commit(); break;
+      }
+      case 'ship-free-region': {
+        const region = a.dataset.option;
+        if (!Object.hasOwn(COMUNAS_RAW, region)) break;
+        const selected = shipCfg().freeRegions;
+        const sh = S.store.ship = S.store.ship || {};
+        sh.freeRegions = selected.includes(region) ? selected.filter(value => value !== region) : [...selected, region];
+        render(); renderProps(true); commit();
+        const selectedGroup = document.querySelector('[data-act="ship-free-region"]')?.closest('details');
+        if (selectedGroup) selectedGroup.open = true;
+        break;
       }
       case 'ship-region': case 'ship-rm-free': {
         const sh = S.store.ship = S.store.ship || {};

@@ -1,4 +1,12 @@
-# CONTINUAR — E-commerce Lab (estado al 2026-11-17)
+# CONTINUAR — E-commerce Lab (estado al 2026-11-24)
+
+## Cierre v2.10.13
+
+Recuperados los cambios locales posteriores a v2.10.12: formulario de entrega unificado, selector con 346 comunas, regiones/comunas ordenadas desde Lampa, búsqueda por nombre y errores inline en el orden del formulario. Conserva tarifas y regiones promocionales editables, envío gratis inicial RM desde 50.000 en moneda de la tienda, cotización pendiente por WhatsApp y configuración del acceso de clientes.
+
+Validación: 18 suites Node OK; checkout regional también comprobado sobre el index servido. La prueba del selector se actualizó para extraer el manejador de cambios completo después de incorporar la restauración del foco.
+
+Los apartados inferiores conservan el historial anterior; sus estados «pendiente/subida» no describen la versión actual.
 
 ## Qué es
 Editor de catálogos «E-commerce Lab» en https://oneknobmedia.com/e-commerce-lab/ (Cloudflare Worker `e-commerce-lab`, cuenta admin@oneknobmedia.com, `wrangler` ya logueado en este PC). Historial largo en `CONTINUAR-historial.md`.
