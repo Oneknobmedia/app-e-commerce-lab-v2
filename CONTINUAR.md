@@ -3,7 +3,7 @@
 ## Regla de trabajo (desde 2026-11-24)
 La fuente de verdad es este repositorio (GitHub `Oneknobmedia/app-e-commerce-lab-v2`, carpeta local `C:\Users\Usuario\repos\app-e-commerce-lab-v2`). Antes de cambiar algo: `git pull`. Las carpetas viejas de OneDrive (`ECOMMERCE LAB 3`, `Imágenes\catalogo GS electtronics`) están en v2.10.7: **no editar ni desplegar desde ahí** (pisarían el checkout regional). Quien cambie algo (Claude, ChatGPT/Codex) hace commit y push; verificar siempre el index servido, no solo el editor local.
 
-## v2.10.14 — SUBIDA, NO desplegada (id `152f5d8c-49de-4127-a133-0867338b2b19`)
+## v2.10.14 — EN VIVO desde 2026-11-24 (id `152f5d8c-49de-4127-a133-0867338b2b19`)
 Precio por mayor por producto: el botón «Mostrar precio por mayor» del panel de un producto (Precios y oferta) ya no mueve el interruptor de la tienda; guarda `p.may` (true = activo solo aquí aunque la tienda lo tenga apagado, false = apagado solo aquí, ausente = sigue a la tienda; se borra si coincide con la tienda). Bloque `// MAY-CORE` (`mayOf`, `hasMay`, `mayToggle`); el botón general «Mostrar precios por mayor» del panel Documento sigue igual. Test `tests/precio-mayor-producto.test.mjs`; verificado en navegador local (tienda apagada/encendida, cobro, botón general). Desplegar con OK: `wrangler versions deploy 152f5d8c-49de-4127-a133-0867338b2b19@100% --yes`; rollback v2.10.13 `c611b624-3495-4765-9bfc-17de9aa3212c`.
 
 ## Cierre v2.10.13
