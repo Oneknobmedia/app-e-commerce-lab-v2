@@ -3307,7 +3307,13 @@ function updCalc(pd) {
   document.getElementById('ed-calc-pct').textContent = pctMay();
   document.getElementById('ed-calc-out').textContent = pctMay() ? fmt(Math.round(v * (100 - pctMay()) / 100)) + ' por mayor' : 'pon el % de descuento';
 }
-const hasMay = p => mayOn() && num(p.pm) > 0 && num(p.pm) < num(p.pd);
+// MAY-CORE:start
+/* precio por mayor de UN producto: p.may = true lo activa solo ahí aunque la tienda lo tenga apagado, false lo apaga solo ahí; sin dato sigue a la tienda */
+const mayOf = p => p && p.may !== undefined && p.may !== null ? !!p.may : mayOn();
+const hasMay = p => mayOf(p) && num(p.pm) > 0 && num(p.pm) < num(p.pd);
+/* botón del producto: invierte el estado de ESTE producto; si queda igual que la tienda, vuelve a seguirla (se borra p.may) */
+const mayToggle = p => { const want = !mayOf(p); if (want === mayOn()) delete p.may; else p.may = want; return want; };
+// MAY-CORE:end
 /* precio que se cobra: el del evento (si hay); desde la cantidad mínima, el por mayor solo si es menor. Nunca se suman */
 const unitOf = (p, q) => { const e = evPrice(p); return hasMay(p) && q >= minQ() ? Math.min(num(p.pm), e) : e; };
 /* por qué baja el precio: 'may' (por mayor), 'ev' (evento) o '' */
@@ -3330,7 +3336,7 @@ const card = (p, i, ref) => { const rf = typeof ref === 'string' ? ref : '', edi
   <div class="ph-r"><div class="act mt" data-act="${esc(k)}" data-lid="prod:${p.id}:btn">${act(k)}</div></div>
   </div>
   <p class="desc" data-lid="prod:${p.id}:desc">${esc(p.desc)}</p>
-  <div class="prices"><p class="pr" data-lid="prod:${p.id}:pd">${ev && !edit ? `<b>${fmt(evPrice(p))}</b><s class="old" aria-label="Antes ${fmt(evBefore(p))}">${fmt(evBefore(p))}</s>` : `<b data-edit>${fmt(p.pd)}</b>${ev ? `<span class="ev-pp" data-ui title="Precio con el evento «${esc(ev.name)}»">${fmt(evPrice(p))}</span>` : ''}`}${was ? `<s class="old" data-lid="prod:${p.id}:old" aria-label="Antes ${fmt(p.old)}">${fmt(p.old)}</s>` : ''}</p>${mayOn() && (edit || (num(p.pm) > 0 && !(ev && num(p.pm) >= evPrice(p)))) ? `<p class="pm" data-lid="prod:${p.id}:pm"><span class="pml" data-lid="prod:${p.id}:pml">${esc(mayLbl())}</span> <b data-edit>${fmt(p.pm)}</b></p>` : ''}</div>${swRow(p, ci)}${szRow(p)}
+  <div class="prices"><p class="pr" data-lid="prod:${p.id}:pd">${ev && !edit ? `<b>${fmt(evPrice(p))}</b><s class="old" aria-label="Antes ${fmt(evBefore(p))}">${fmt(evBefore(p))}</s>` : `<b data-edit>${fmt(p.pd)}</b>${ev ? `<span class="ev-pp" data-ui title="Precio con el evento «${esc(ev.name)}»">${fmt(evPrice(p))}</span>` : ''}`}${was ? `<s class="old" data-lid="prod:${p.id}:old" aria-label="Antes ${fmt(p.old)}">${fmt(p.old)}</s>` : ''}</p>${mayOf(p) && (edit || (num(p.pm) > 0 && !(ev && num(p.pm) >= evPrice(p)))) ? `<p class="pm" data-lid="prod:${p.id}:pm"><span class="pml" data-lid="prod:${p.id}:pml">${esc(mayLbl())}</span> <b data-edit>${fmt(p.pm)}</b></p>` : ''}</div>${swRow(p, ci)}${szRow(p)}
 </article>`;
   return rf ? refCard(h, p, rf) : h; };
 
@@ -8079,7 +8085,8 @@ function buildProps0() {
   if (pm && sizesOn()) { const pp = prod(pm[1]); h += sec('Tallas', `<div class="ed-tgs w">${btn(hasSizes(pp) ? 'Cambiar tallas…' : 'Elegir tallas…', 'p-sizes')}${hasSizes(pp) ? btn('Quitar tallas', 'p-nosizes') : ''}</div>`, hasSizes(pp) ? `Tallas: ${esc(pp.sizes.join(', '))}. El cliente toca una talla bajo el precio o la elige al agregar.` : 'Este producto aún no tiene tallas. También puedes tocar «+ Tallas» bajo el precio.'); }
   if (pm && modsOn()) { const pp = prod(pm[1]); h += sec('Quiero mi modelo', `<div class="ed-tgs w">${tgl('Pedir mi modelo', hasMods(pp), 'p-mq')}</div>`, hasSizes(pp) ? 'Este producto tiene tallas: se muestran las tallas. Quita las tallas para pedir marca, modelo y color.' : 'Con esto encendido el cliente toca «Quiero mi modelo» bajo el precio y escribe su marca, su modelo y su color antes de agregar al carrito. También puedes tocar «+ Quiero mi modelo» bajo el precio.'); }
   if (om) { const pp = prod(om[1]); h += sec('Precios y oferta', fs([F.num('Precio', '#pd', {min: 0}), F.num('Precio antes (oferta)', '#old', {min: 0, ph: 'sin oferta'}), F.text('Etiqueta propia', '#tag', {max: 14, ph: offOf(Object.assign({}, pp, {tag: ''})) || 'Ej. 2x1'}), F.num('Precio por mayor', '#pm', {min: 0, ph: '0'}), F.text('Moneda de toda la página', '@store.cur', {max: 6, ph: '$'})])
-    + `<div class="ed-tgs w">${tgl('Mostrar precios por mayor', mayOn(), 'may')}${pp && (pp.old || pp.tag) ? btn('Quitar oferta', 'p-nooffer') : ''}</div>`
+    + `<div class="ed-tgs w">${tgl('Mostrar precio por mayor', mayOf(pp), 'p-may')}${pp && (pp.old || pp.tag) ? btn('Quitar oferta', 'p-nooffer') : ''}</div>`
+    + `<p class="ed-note" style="margin:0">Solo este producto${pp && pp.may !== undefined ? ' (ajuste propio)' : ''}. ${mayOf(pp) ? `Se cobra el precio por mayor desde ${minQ()} u.; las unidades y el descuento general se cambian en Documento → Precios por mayor.` : 'Enciéndelo para mostrarlo y cobrarlo solo aquí, sin activar los de toda la tienda.'}</p>`
     + (mayOn() ? fs([F.num('Descuento %', '@store.pctMay', {min: 0, max: 90, ph: 'Ej. 10'})]) + calcHTML(pp && pp.pd) : ''),
     `Con un precio antes mayor al precio, se tacha y la etiqueta roja calcula el descuento (por ejemplo -20%). Una etiqueta propia reemplaza ese texto: 2x1, Nuevo, Últimas. El precio por mayor se muestra como «Desde ${minQ()} u.» y en el carrito se cobra desde esa cantidad.`); }
   const gicRow = cc => `<p class="ed-note w" style="margin:8px 0 0">Ícono junto al nombre (la estrella del borde animado):</p><div class="ed-tgs w">${[['', '★ Estrella'], ...Object.entries(TAG_SH).filter(([k]) => k !== 'star').map(([k, x]) => [k, x[0]]), ['logo', 'Logo de la tienda'], ['img', cc.gImg ? 'Imagen propia ✓' : 'Subir imagen…'], ['no', 'Sin ícono']].map(([v, l]) => `<button type="button" class="ed-tg${(cc.gIc || '') === v ? ' on' : ''}" data-act="c-gic" data-v="${v}" aria-pressed="${(cc.gIc || '') === v}">${l}</button>`).join('')}</div>`;
@@ -8311,7 +8318,7 @@ function docProps() {
     })(), 'Conexión de proveedores pendiente. El acceso aparecerá en la tienda cuando esté conectada.')
     + sec('Productos', `<div class="ed-tgs w"><button type="button" class="ed-b pri" data-act="bulk">Subir productos en lote…</button></div>`, `Arrastra la carpeta con las fotos de tus productos o hasta ${BULK_MAX} imágenes de una vez: cada foto crea un producto. Eliges un precio para todos o uno por producto.`)
     + sec('Precios por mayor', `<div class="ed-tgs w">${tgl('Mostrar precios por mayor', mayOn(), 'may')}</div>` + (mayOn() ? fs([F.num('Descuento %', '@store.pctMay', {min: 0, max: 90, ph: 'Ej. 10'}), F.num('Desde cuántas unidades', '@store.minMay', {min: 2, ph: '6'})]) + calcHTML(100) : ''),
-      mayOn() ? `Encendido: cada producto muestra «Desde ${minQ()} u.» y el carrito cobra el precio por mayor desde esa cantidad. Con el % de descuento puesto, el precio por mayor se calcula solo al poner o cambiar el precio (puedes corregirlo a mano en cada producto).` : 'Apagado: el catálogo y el carrito usan solo el precio por unidad. Los precios por mayor quedan guardados para cuando lo vuelvas a encender.')
+      mayOn() ? `Encendido: cada producto muestra «Desde ${minQ()} u.» y el carrito cobra el precio por mayor desde esa cantidad. Los productos con ajuste propio (botón «Mostrar precio por mayor» de su panel) mantienen su estado. Con el % de descuento puesto, el precio por mayor se calcula solo al poner o cambiar el precio (puedes corregirlo a mano en cada producto).` : 'Apagado: el catálogo y el carrito usan solo el precio por unidad. Los precios por mayor quedan guardados para cuando lo vuelvas a encender.')
     + pedidosSec()
     + sec('Servicio técnico', `<div class="ed-tgs w">${tgl('Mostrar Servicio técnico', svcOn(), 'svc-on')}</div>` + (svcOn() ? `<div class="ed-tgs w">${tgl('Borde animado', !!S.store.svcGlow, 'svc-glow')}</div>` : '') + `` + (svcOn() ? fs([F.sel('Posición en pastillas y menú', '@store.svcPos', [['', 'Al final (por defecto)'], ['0', 'Al principio'], ...S.cats.slice(0, -1).map((c, i) => [String(i + 1), 'Después de «' + (c.name || 'categoría ' + (i + 1)) + '»'])], {wide: 1})]) : '') + (svcOn() ? fs([F.text('WhatsApp del servicio técnico (con código de país)', '@store.waTec', {wide: 1, ph: waNum() ? 'Vacío: usa el de pedidos (' + (S.store.wa || '').trim() + ')' : 'Ej. 56 9 1234 5678'})]) : ''),
       !svcOn() ? 'Apagado: no se muestran la pastilla ni la opción del menú.'
@@ -10715,6 +10722,7 @@ function bindUI() {
       case 'bg-up': pickImage('bg'); break;
       case 'bg-del': delete S.store.bgImg; render(); renderProps(true); commit(); toast('Imagen de fondo quitada'); break;
       case 'bg-scroll': { const b = S.store.bgx = Object.assign({}, S.store.bgx); if (b.scroll === true) delete b.scroll; else b.scroll = true; render(); renderProps(true); commit(); break; }
+      case 'p-may': if (p) { const on = mayToggle(p); render(); renderProps(true); commit(); toast(on ? 'Precio por mayor activado solo en este producto' : 'Precio por mayor desactivado solo en este producto'); } break;
       case 'may': if (mayOn()) S.store.hideMay = true; else delete S.store.hideMay; render(); renderProps(true); commit(); toast(mayOn() ? 'Precios por mayor visibles' : 'Solo precios por unidad'); break;
       case 'p-sizes': if (p) vtDialog(p.id); break;
       case 'p-nosizes': if (p) { delete p.sizes; delete p.vt; delete p.vl; render(); renderProps(true); commit(); toast('Producto sin tallas'); } break;
